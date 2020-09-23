@@ -8,7 +8,7 @@ cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
 import eventlet
-from mqsrv.base import set_logger_level
+from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
 
 eventlet.monkey_patch()

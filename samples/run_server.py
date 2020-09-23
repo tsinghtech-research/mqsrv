@@ -9,7 +9,8 @@ sys.path.insert(0, cur_d+'/../')
 from kombu import Connection, Exchange
 
 import eventlet
-from mqsrv.base import get_rpc_exchange, set_logger_level
+from mqsrv.logger import set_logger_level
+from mqsrv.base import get_rpc_exchange
 from mqsrv.server import MessageQueueServer, run_server, make_server
 
 eventlet.monkey_patch()

@@ -12,8 +12,9 @@ from kombu import Connection, Queue, Exchange
 from kombu.mixins import ConsumerProducerMixin
 
 from .rpc_utils import pack_funcs, rpc_decode_req, rpc_encode_rep
+from .base import get_connection, get_rpc_exchange, get_event_exchange
+from .logger import get_logger
 from .exc import BaseException, MethodNotFound
-from .base import get_logger, get_connection, get_rpc_exchange, get_event_exchange
 
 def format_function_name(fn):
     fn_name = fn.__name__
@@ -62,18 +63,18 @@ class MessageQueueServer(ConsumerProducerMixin):
             name = format_function_name(fn)
 
         self.rpcs[name] = fn
-        self.logger.info(f'register_rpc: {name} {fn}')
+        self.logger.info(f'register_rpc: {name} {fn.__name__}')
 
     def register_event_handler(self, evt_type, cb):
         if evt_type not in self.event_handlers:
             self.event_handlers[evt_type] = []
 
         self.event_handlers[evt_type].append(cb)
-        self.logger.info(f'register_event_handler: {evt_type} {cb}')
+        self.logger.info(f'register_event_handler: {evt_type} {cb.__name__}')
 
     def register_exc_handler(self, h):
         self.exc_handlers.append(h)
-        self.logger.info(f'register_exc_handler: {h}')
+        self.logger.info(f'register_exc_handler: {h.__name__}')
 
     def register_context(self, ctx, name=''):
         if not name:
@@ -118,9 +119,10 @@ class MessageQueueServer(ConsumerProducerMixin):
             self.pool.spawn_n(h, e)
 
     def rpc_worker(self, message):
-        send_reply = partial(self.send_reply, message)
         req_id = message.properties['correlation_id']
         _, meth, params = rpc_decode_req(message.payload)
+        self.logger.debug(f"reciving request [{self.rpc_queue.name}, {req_id}] {meth}")
+        send_reply = partial(self.send_reply, message)
 
         try:
             if meth not in self.rpcs:
@@ -146,6 +148,7 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.pool.spawn_n(self.rpc_worker, message)
 
     def event_worker(self, cb, evt_type, evt_data):
+        self.logger.debug(f"reciving event [{evt_type}])")
         try:
             cb(evt_type, evt_data)
 
@@ -184,7 +187,7 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.logger.info("server teared down.")
         raise StopServe
 
-def make_server(rpc_routing_key=None, event_routing_keys=[], conn=None, rpc_exchange=None, event_exchange=None, rpc_queue=None, event_queues=[], **kws):
+def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exchange=None, event_exchange=None, rpc_queue=None, event_queues=[], **kws):
     if isinstance(event_routing_keys, str):
         event_routing_keys = [event_routing_keys]
 

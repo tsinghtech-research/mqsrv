@@ -2,7 +2,8 @@ import socket
 import eventlet
 from kombu import Connection, Producer, Consumer, Queue, uuid, Exchange
 from .rpc_utils import rpc_encode_req, rpc_decode_rep
-from .base import get_rpc_exchange, get_event_exchange, get_logger, get_connection
+from .base import get_rpc_exchange, get_event_exchange, get_connection, declare_entity
+from .logger import get_logger
 
 class Publisher:
     def __init__(self, client, routing_key):
@@ -51,6 +52,7 @@ class MessageQueueClient:
         self.send_conn = connection
         self.recv_conn = connection.clone()
 
+        declare_entity(callback_queue, self.recv_conn)
         self.callback_queue = callback_queue
 
         if rpc_exchange is None:
@@ -68,7 +70,7 @@ class MessageQueueClient:
 
     def on_response(self, message):
         req_id = message.properties['correlation_id']
-        self.logger.debug(f"response [{req_id}]")
+        self.logger.debug(f"receiving response [{self.callback_queue.name}, {req_id}]")
 
         if req_id in self.req_events:
             error, result = rpc_decode_rep(message.payload)
@@ -76,20 +78,28 @@ class MessageQueueClient:
             del self.req_events[req_id]
 
     def run(self):
-        with Consumer(self.recv_conn,
-                      on_message=self.on_response,
-                      queues=[self.callback_queue],
-                      no_ack=True):
-            while not self.should_stop:
-                try:
-                    self.recv_conn.drain_events(timeout=self.interval)
-                except socket.timeout:
-                    continue
+        while not self.should_stop:
+
+            if not self.is_waiting():
+                eventlet.sleep(self.interval)
+                continue
+
+            with Consumer(self.recv_conn,
+                          on_message=self.on_response,
+                          queues=[self.callback_queue],
+                          no_ack=True):
+                while self.is_waiting():
+                    try:
+                        self.recv_conn.drain_events(timeout=self.interval)
+                    except socket.timeout:
+                        continue
+
+    def is_waiting(self):
+        return bool(self.req_events)
 
     def call_async(self, routing_key, meth, **kws):
-        req_id = uuid()
-        self.req_events[req_id] = eventlet.Event()
-        self.logger.debug(f"request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
+        req_id = 'corr-'+uuid()
+        self.logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
 
         with Producer(self.send_conn) as producer:
             producer.publish(
@@ -99,7 +109,9 @@ class MessageQueueClient:
                 reply_to=self.callback_queue.name,
                 correlation_id=req_id,
             )
-        return self.req_events[req_id]
+
+            self.req_events[req_id] = eventlet.Event()
+            return self.req_events[req_id]
 
     def call(self, *args, **kws):
         evt = self.call_async(*args, **kws)
@@ -120,6 +132,7 @@ class MessageQueueClient:
         self.send_conn.release()
 
     close = release
+    teardown = release
 
     def get_pubber(self, routing_key):
         return Publisher(self, routing_key)
@@ -133,7 +146,7 @@ def make_client(conn=None, rpc_exchange=None, callback_queue=None, event_exchang
         rpc_exchange = get_rpc_exchange()
 
     if callback_queue is None:
-        callback_queue = Queue('rpc-'+uuid(), exclusive=True, auto_delete=True)
+        callback_queue = Queue('cbq-'+uuid(), exclusive=True, auto_delete=True)
 
     if not isinstance(event_exchange, Exchange):
         event_exchange = get_event_exchange()
