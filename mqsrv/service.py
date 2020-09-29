@@ -1,11 +1,12 @@
 import uuid
 import eventlet
+from eventlet import event
 from eventlet.queue import LightQueue
 
 from .logger import get_logger, set_logger_level
 
-class RunnerBase:
-    def __init__(self, name, event_handler=None, events={}, logger=None, logger_kws={}, interval=0.1, debug=False, validate=False):
+class ServiceBase:
+    def __init__(self, name, event_handler=None, events={}, rpc_prefix='', logger=None, logger_kws={}, debug=False, validate=False):
         self.name = name
 
         if not logger:
@@ -15,19 +16,27 @@ class RunnerBase:
         self.event_handler = event_handler
         self.events = events
 
-        self.should_stop = False
-        self.interval = interval
-
         self.debug = debug
         self.validate = validate
 
-        self.runlet = None
+        self.rpc_prefix = rpc_prefix
 
     set_logger_level = set_logger_level
 
     def publish(self, evt_type, evt_data={}):
+        if self.debug:
+            assert evt_type in self.events
+
         if self.event_handler:
-            self.event_handler(self.events[evt_type], evt_data)
+            self.event_handler(evt_type, evt_data)
+
+class RunnerBase(ServiceBase):
+    def __init__(self, name, *args, interval=0.1, **kws):
+        super().__init__(name, *args, **kws)
+
+        self.should_stop = False
+        self.interval = interval
+        self.runlet = None
 
     def run(self):
         while not self.should_stop:

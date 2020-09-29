@@ -13,7 +13,7 @@ from kombu.mixins import ConsumerProducerMixin
 
 from .rpc_utils import pack_funcs, rpc_decode_req, rpc_encode_rep
 from .base import get_connection, get_rpc_exchange, get_event_exchange
-from .logger import get_logger
+from .logger import get_logger, set_logger_level
 from .exc import BaseException, MethodNotFound
 
 def format_function_name(fn):
@@ -23,13 +23,14 @@ def format_function_name(fn):
 
     if inspect.ismethod(fn):
         obj = fn.__self__
-        prefix = ''
-        if hasattr(obj, 'name'):
-            prefix = obj.name
+        if not hasattr(obj, 'rpc_prefix'):
+            rpc_prefix = ''
         else:
-            prefix = obj.__class__.__name__
+            rpc_prefix = obj.rpc_prefix
 
-        return f'{prefix}_{fn_name}'
+        if rpc_prefix:
+            return f'{rpc_prefix}_{fn_name}'
+        return fn_name
 
     else:
         raise
@@ -57,6 +58,8 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.event_handlers = {}
         self.exc_handlers = []
         self.ctxs = {}
+
+    set_logger_level = set_logger_level
 
     def register_rpc(self, fn, name=''):
         if not name:
