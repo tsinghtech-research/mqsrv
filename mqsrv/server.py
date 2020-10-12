@@ -81,7 +81,7 @@ class MessageQueueServer(ConsumerProducerMixin):
 
     def register_context(self, ctx, name=''):
         if not name:
-            if hasattr(ctx, name):
+            if hasattr(ctx, 'name'):
                 name = ctx.name
             else:
                 name = id(ctx)
