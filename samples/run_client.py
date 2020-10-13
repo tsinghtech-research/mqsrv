@@ -23,7 +23,7 @@ def main(broker_url):
     print('Requesting fib(30)')
     exc, result = caller.fib_fn(n=30)
     print ("result1", result)
-    exc, result = caller.FibClass_fib(n=30)
+    exc, result = caller.fibclass_fib(n=30)
     print ("result2", result)
     if exc:
         print ("="*10)

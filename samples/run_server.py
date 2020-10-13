@@ -27,6 +27,8 @@ def handle_event(evt_type, evt_data):
     print ("handle event", evt_type, evt_data)
 
 class FibClass:
+    rpc_prefix = 'fibclass'
+
     def setup(self):
         print ("fib setuped")
 
