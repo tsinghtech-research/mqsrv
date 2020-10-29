@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+import eventlet
+eventlet.monkey_patch()
+
 import sys
 import traceback
 import os
@@ -7,13 +10,12 @@ cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
 from kombu import Connection, Exchange
-
-import eventlet
 from mqsrv.logger import set_logger_level
 from mqsrv.base import get_rpc_exchange
 from mqsrv.server import MessageQueueServer, run_server, make_server
 
-eventlet.monkey_patch()
+def echo(a):
+    return a
 
 def fib_fn(n):
     if n == 0:
@@ -45,6 +47,7 @@ if __name__ == '__main__':
         rpc_routing_key='server_rpc_queue',
         event_routing_keys=['server_event_queue'],
     )
+    server.register_rpc(echo)
     server.register_rpc(fib_obj.fib)
     server.register_rpc(fib_fn)
     server.register_event_handler('new', handle_event)

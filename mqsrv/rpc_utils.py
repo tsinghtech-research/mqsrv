@@ -17,16 +17,16 @@ pack_funcs = {
     'msgpack': (msgpack.packb, msgpack.unpackb),
 }
 
-def rpc_encode_req(msgid, meth, params):
-    return [0, msgid, meth, params]
+def rpc_encode_req(msgid, meth, args, kws):
+    return [0, msgid, meth, args, kws]
 
 def rpc_decode_req(data, check_id=None):
-    typ, msgid, meth, params = data
+    typ, msgid, meth, args, kws = data
     assert typ == 0
     if check_id:
         assert msgid == check_id
 
-    return msgid, meth, params
+    return msgid, meth, args, kws
 
 def rpc_encode_rep(msgid, error=None, result=None):
     if error:

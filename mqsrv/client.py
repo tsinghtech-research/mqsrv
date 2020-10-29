@@ -44,15 +44,18 @@ class MessageQueueClient:
             callback_queue,
             event_exchange,
             logger=None,
-            interval=0.1):
+            interval=1):
 
         if not logger:
             self.logger = get_logger('mqclient')
 
-        self.send_conn = connection
-        self.recv_conn = connection.clone()
+        self.conn = connection
+        self.pool = connection.ChannelPool(2)
+        self.recv_conn = self.pool.acquire()
+        self.send_conn = self.pool.acquire()
 
-        declare_entity(callback_queue, self.recv_conn)
+        declare_entity(callback_queue, self.conn)
+
         self.callback_queue = callback_queue
 
         if rpc_exchange is None:
@@ -74,8 +77,7 @@ class MessageQueueClient:
 
         if req_id in self.req_events:
             error, result = rpc_decode_rep(message.payload)
-            self.req_events[req_id].send((error, result))
-            del self.req_events[req_id]
+            self.req_events[req_id].send((req_id, error, result))
 
     def run(self):
         while not self.should_stop:
@@ -90,20 +92,20 @@ class MessageQueueClient:
                           no_ack=True):
                 while self.is_waiting():
                     try:
-                        self.recv_conn.drain_events(timeout=self.interval)
+                        self.conn.drain_events(timeout=self.interval)
                     except socket.timeout:
                         continue
 
     def is_waiting(self):
         return bool(self.req_events)
 
-    def call_async(self, routing_key, meth, **kws):
+    def call_async(self, routing_key, meth, *args, **kws):
         req_id = 'corr-'+uuid()
         self.logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
 
         with Producer(self.send_conn) as producer:
             producer.publish(
-                rpc_encode_req(req_id, meth, kws),
+                rpc_encode_req(req_id, meth, args, kws),
                 exchange=self.rpc_exchange,
                 routing_key=routing_key,
                 reply_to=self.callback_queue.name,
@@ -115,7 +117,9 @@ class MessageQueueClient:
 
     def call(self, *args, **kws):
         evt = self.call_async(*args, **kws)
-        return evt.wait()
+        req_id, *ret = evt.wait()
+        del self.req_events[req_id]
+        return ret
 
     def publish(self, routing_key, evt_type, evt_data):
         with Producer(self.send_conn) as producer:
@@ -128,8 +132,7 @@ class MessageQueueClient:
     def release(self):
         self.should_stop = True
         self.runner.wait()
-        self.recv_conn.release()
-        self.send_conn.release()
+        self.conn.release()
 
     close = release
     teardown = release

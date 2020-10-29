@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+import eventlet
+eventlet.monkey_patch()
+
 import six
 import traceback
 import sys
@@ -7,11 +10,8 @@ import os.path as osp
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
-import eventlet
 from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
-
-eventlet.monkey_patch()
 
 def main(broker_url):
     client = make_client()
@@ -19,6 +19,10 @@ def main(broker_url):
 
     caller = client.get_caller('server_rpc_queue')
     pubber = client.get_pubber('server_event_queue')
+
+    for i in range(4):
+        print ("sending echo")
+        exc, result = caller.echo("hello")
 
     print('Requesting fib(30)')
     exc, result = caller.fib_fn(n=30)

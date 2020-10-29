@@ -123,7 +123,7 @@ class MessageQueueServer(ConsumerProducerMixin):
 
     def rpc_worker(self, message):
         req_id = message.properties['correlation_id']
-        _, meth, params = rpc_decode_req(message.payload)
+        _, meth, args, kws = rpc_decode_req(message.payload)
         self.logger.debug(f"reciving request [{self.rpc_queue.name}, {req_id}] {meth}")
         send_reply = partial(self.send_reply, message)
 
@@ -131,7 +131,7 @@ class MessageQueueServer(ConsumerProducerMixin):
             if meth not in self.rpcs:
                 raise MethodNotFound(f"method {meth} not found!")
 
-            result = self.rpcs[meth](**params)
+            result = self.rpcs[meth](*args, **kws)
 
         except BaseException as e:
             self.logger.error(f"BaseException for request id {req_id}")
