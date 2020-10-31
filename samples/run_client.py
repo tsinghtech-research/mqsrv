@@ -20,7 +20,7 @@ def main(broker_url):
     caller = client.get_caller('server_rpc_queue')
     pubber = client.get_pubber('server_event_queue')
 
-    for i in range(4):
+    for i in range(10):
         print ("sending echo")
         exc, result = caller.echo("hello")
 

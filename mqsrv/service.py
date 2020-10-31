@@ -74,7 +74,7 @@ class TaskQueue:
     def wait(self, req_id):
         assert req_id in self.req_events
         ret_val = self.req_events[req_id].wait()
-        del self.req_events[req_id]
+        self.req_events.pop(req_id)
         return ret_val
 
     def call(self, d):

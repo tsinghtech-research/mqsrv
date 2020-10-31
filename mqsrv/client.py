@@ -118,7 +118,7 @@ class MessageQueueClient:
     def call(self, *args, **kws):
         evt = self.call_async(*args, **kws)
         req_id, *ret = evt.wait()
-        del self.req_events[req_id]
+        self.req_events.pop(req_id)
         return ret
 
     def publish(self, routing_key, evt_type, evt_data):
