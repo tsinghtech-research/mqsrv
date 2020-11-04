@@ -24,6 +24,16 @@ def main(broker_url):
         print ("sending echo")
         exc, result = caller.echo("hello")
 
+    t = 3
+    print ('-'*10)
+    print (f"slepping {t}s")
+    eventlet.sleep(t)
+    print (f'wake up')
+
+    for i in range(10):
+        print ("sending echo")
+        exc, result = caller.echo("hello")
+
     print('Requesting fib(30)')
     exc, result = caller.fib_fn(n=30)
     print ("result1", result)
