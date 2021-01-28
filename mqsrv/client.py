@@ -102,9 +102,9 @@ class MessageQueueClient:
             )
             return self.req_events[req_id]
 
-    def call(self, *args, **kws):
+    def call(self, *args, timeout=None, **kws):
         evt = self.call_async(*args, **kws)
-        req_id, *ret = evt.wait()
+        req_id, *ret = evt.wait(timeout)
         del self.req_events[req_id]
         return ret
 
