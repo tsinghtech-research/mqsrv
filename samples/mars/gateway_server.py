@@ -8,7 +8,7 @@ from common import parse_addr
 from eventlet.queue import Queue
 from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
-from mqsrv.server import make_server
+from mqsrv.server import make_server, run_server
 
 class SocketHandler:
     def __init__(self, sock, pubber, caller, timeout=1):
@@ -75,8 +75,7 @@ def main(addr):
     ctrl_evt_server = make_server(
         event_routing_keys=[evt_q],
     )
-    ctrl_evt_server.setup()
-    eventlet.spawn_n(ctrl_evt_server.run)
+    run_server(ctrl_evt_server, block=False)
 
     front_server = eventlet.listen(parse_addr(addr))
     pool = eventlet.GreenPool()

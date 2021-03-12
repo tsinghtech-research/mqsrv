@@ -209,7 +209,7 @@ def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exch
 
     return MessageQueueServer(conn, rpc_queue, event_queues, **kws)
 
-def run_server(server):
+def run_server(server, block=True):
     logger = server.logger
     logger.info(f'starting at {server.connection.as_uri()}')
 
@@ -221,6 +221,9 @@ def run_server(server):
     server.setup()
 
     runlet = eventlet.spawn(server.run)
+
+    if not block:
+        return
 
     while True:
         try:
