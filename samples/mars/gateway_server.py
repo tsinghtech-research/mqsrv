@@ -4,61 +4,84 @@ eventlet.monkey_patch()
 
 import click
 import json
-from common import parse_addr
+from common import parse_addr, sock_send
 from eventlet.queue import Queue
 from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
 from mqsrv.server import make_server, run_server
 
 class SocketHandler:
-    def __init__(self, sock, pubber, caller, timeout=1):
-        self.queue = Queue()
+    def __init__(self, sock, pubber, caller, timeout=1, max_size=512):
+        self.cmd_queue = Queue()
+        self.evt_queue = Queue()
         self.sock = sock
         self.fd = sock.makefile('rw')
         self.pubber = pubber
         self.caller = caller
         self.timeout = timeout
-        self.is_disconnected = False
+        self.max_size = max_size
+        self.is_connected = True
 
-    def handle_message(self):
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        self.is_connected = False
+        self.caller.end_scan()
+
+    def loop_put_command(self):
         while True:
-            s = self.fd.readline()
+            s = self.sock.recv(self.max_size)
             if not s:
-                self.is_disconnected = True
+                self.close()
                 break
             data = json.loads(s)
             assert data
-            self.queue.put(data)
+            self.cmd_queue.put(data)
 
-    def run(self):
-        while not self.is_disconnected:
-            data = self.queue.get()
+    def sock_send(self, msg):
+        if not self.is_connected:
+            return False
+
+        try:
+            sock_send(self.sock, msg)
+        except socket.error:
+            self.close()
+            return False
+
+        return True
+
+    def loop_process_command(self):
+        while self.is_connected:
+            data = self.cmd_queue.get()
             cmd = data['Command']
             if cmd == 'get_device_status':
                 exc, device_status = self.caller.get_device_status()
                 msg = json.dumps(device_status) + '\n'
-                self.fd.write(msg)
+                self.sock_send(msg)
 
             elif cmd == 'shutdown':
-                self.fd.write('shutdown\n')
+                self.sock_send('shutdown\n')
 
             elif cmd =='end_scan':
                 exc, ret = self.caller.end_scan()
-                self.fd.write('end_scan\n')
+                self.sock_send('end_scan\n')
 
             elif cmd == 'start_scan':
                 exc, ret = self.caller.start_scan()
-                self.fd.write('start_scan\n')
+                self.sock_send('start_scan\n')
 
             else:
                 print ("unsupported command", data)
 
-            self.fd.flush()
+    def put_event(self, evt_type, evt_data):
+        self.evt_queue.put((evt_type, evt_data))
 
-    def handle_event(self, evt_type, evt_data):
-        print ("recv event", evt_type, evt_data)
-        self.fd.write(json.dumps(evt_data)+'\n')
-        self.fd.flush()
+    def loop_process_event(self):
+        while self.is_connected:
+            evt_type, evt_data = self.evt_queue.get()
+            print ("recv event", evt_type, evt_data)
+            self.sock_send('\x02'+json.dumps(evt_data)+'\n')
 
 @click.command()
 @click.option('--addr', default='0.0.0.0:8081')
@@ -84,11 +107,12 @@ def main(addr):
             client_sock, client_addr = front_server.accept()
             print (f"accept socket({client_addr})")
             handler = SocketHandler(client_sock, ctrl_pubber, ctrl_caller, timeout=1)
-            pool.spawn_n(handler.run)
-            pool.spawn_n(handler.handle_message)
+            pool.spawn_n(handler.loop_process_event)
+            pool.spawn_n(handler.loop_process_command)
+            pool.spawn_n(handler.loop_put_command)
 
             ctrl_evt_server.register_event_handler(
-                'new_result', handler.handle_event)
+                'new_result', handler.put_event)
 
         except (SystemExit, KeyboardInterrupt):
             break

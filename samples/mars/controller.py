@@ -3,6 +3,7 @@ import eventlet
 eventlet.monkey_patch()
 
 from eventlet import sleep, event
+import time
 from mqsrv.logger import set_logger_level
 from mqsrv.base import get_rpc_exchange
 from mqsrv.client import make_client
@@ -13,7 +14,7 @@ class Controller:
         self.client = make_client()
         self.pubber = self.client.get_pubber(evt_q)
         self.is_running = False
-        self.prev_is_running = False
+        self.has_send_stop_evt = False
         self.stop_evt = event.Event()
         self.interval = interval
 
@@ -21,20 +22,28 @@ class Controller:
         return {f'camera{i}': True for i in range(6)}
 
     def end_scan(self, timeout=10):
+        if not self.is_running:
+            return True
+
         self.is_running = False
+        print ("end scan")
+        start_t = time.time()
         self.stop_evt.wait(timeout=timeout)
+        print ("finish end scan", time.time() - start_t)
         return True
 
     def start_scan(self):
         self.is_running = True
+        self.has_send_stop_evt = False
+        self.stop_evt = event.Event()
         # do initialization job
         return True
 
     def run(self):
         while True:
-            if self.prev_is_running and not self.is_running:
+            if not self.is_running and not self.has_send_stop_evt:
                 self.stop_evt.send()
-                self.prev_is_running = self.is_running
+                self.has_send_stop_evt = True
 
             if not self.is_running:
                 sleep(self.interval)
@@ -45,8 +54,6 @@ class Controller:
             print ("publising")
             self.pubber("new_result", {'code': '12345'})
 
-            self.prev_is_running = self.is_running
-
 def main():
     evt_q = 'mars_event_queue'
     obj = Controller(evt_q)
@@ -55,7 +62,7 @@ def main():
 
     server = make_server(
         rpc_routing_key='mars_rpc_queue',
-        event_routing_keys=[evt_q],
+        # event_routing_keys=[evt_q],
     )
 
     server.register_rpc(obj.get_device_status, "get_device_status")

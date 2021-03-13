@@ -3,6 +3,7 @@ import eventlet
 eventlet.monkey_patch()
 
 from eventlet import sleep
+from eventlet.green import threading
 import json
 import socket
 from time import sleep
@@ -28,29 +29,40 @@ cmds = [
     },
 ]
 
+recv_reply = False
+
 def recv_thread(sock):
-    fd = sock.makefile('r')
+    global recv_reply
     while True:
-        s = fd.readline()
+        s = sock.recv(512)
         if not s:
             break
-
-        print (s)
+        if s[0] == '\x02':
+            print (s)
+        else:
+            recv_reply = True
 
 def main(addr='127.0.0.1:8081'):
+    global recv_reply
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(parse_addr(addr))
 
     eventlet.spawn_n(recv_thread, sock)
-    fd = sock.makefile('w')
-    for cmd in cmds:
-        if cmd['Command'] == 'end_scan':
-            sleep(10)
+    for i in range(2):
+        print (f"round {i}")
+        for cmd in cmds:
+            if cmd['Command'] == 'end_scan':
+                sleep(5)
 
-        msg = json.dumps(cmd)
-        fd.write(msg+'\n')
-        fd.flush()
+            recv_reply = False
+            msg = json.dumps(cmd)
+            sock.send((msg+'\n').encode())
+            print (cmd)
 
+            while not recv_reply:
+                sleep(0.01)
+
+    sock.close()
 
 if __name__ == "__main__":
     import typer
