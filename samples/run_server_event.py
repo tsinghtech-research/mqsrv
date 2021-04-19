@@ -36,7 +36,7 @@ def main(name):
 
     server = make_server(
         rpc_routing_key=f'server_rpc_queue_{name}',
-        event_routing_keys=['server_event_queue'],
+        event_routing_keys=[(f'server_event_queue_{name}', 'server_event_key')],
     )
     server.register_rpc(echo)
     server.register_event_handler('new', srv.handle_event)

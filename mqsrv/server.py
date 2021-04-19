@@ -231,6 +231,12 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.logger.info("server teared down.")
         raise StopServe
 
+def to_pair(v):
+    if isinstance(v, str):
+        return (v, v)
+    assert isinstance(v, tuple) and len(v) == 2
+    return v
+
 def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exchange=None, event_exchange=None, rpc_queue=None, event_queues=[], **kws):
     if isinstance(event_routing_keys, str):
         event_routing_keys = [event_routing_keys]
@@ -243,10 +249,14 @@ def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exch
         event_exchange = get_event_exchange()
 
     if rpc_queue is None:
-        rpc_queue = Queue(rpc_routing_key, routing_key=rpc_routing_key, exchange=rpc_exchange)
+        q_name, routing_key = to_pair(rpc_routing_key)
+        rpc_queue = Queue(q_name, routing_key=routing_key, exchange=rpc_exchange)
 
     if not event_queues:
-        event_queues = [Queue(i, routing_key=i, exchange=event_exchange) for i in event_routing_keys]
+        event_queues = []
+        for i in event_routing_keys:
+            q_name, routing_key = to_pair(i)
+            event_queues.append(Queue(q_name, routing_key=routing_key, exchange=event_exchange))
 
     return MessageQueueServer(conn, rpc_queue, event_queues, **kws)
 

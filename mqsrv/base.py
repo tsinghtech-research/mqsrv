@@ -9,7 +9,7 @@ def get_rpc_exchange(name=None):
 def get_event_exchange(name=None):
     if not name:
         name = EVT_EXCHANGE
-    return Exchange(name, type='fanout', durable=True, delivery_mode=Exchange.PERSISTENT_DELIVERY_MODE)
+    return Exchange(name, type='topic', durable=True, delivery_mode=Exchange.PERSISTENT_DELIVERY_MODE)
 
 def get_connection(conn=None):
     if isinstance(conn, Connection):
