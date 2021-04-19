@@ -56,8 +56,10 @@ class MessageQueueServer(ConsumerProducerMixin):
 
         self.rpcs = {}
         self.event_handlers = {}
-        self.exc_handlers = []
+        self.exc_handlers = {}
         self.ctxs = {}
+        self.evt_cb_id = 0
+        self.exc_handler_id = 0
 
     set_logger_level = set_logger_level
 
@@ -65,19 +67,58 @@ class MessageQueueServer(ConsumerProducerMixin):
         if not name:
             name = format_function_name(fn)
 
+        assert name not in self.rpcs
         self.rpcs[name] = fn
         self.logger.info(f'register_rpc: {name} {fn.__name__}')
+        return name
+
+    def unregister_rpc(self, name):
+        if name in self.rpcs:
+            self.rpcs.pop(name)
+            self.logger.info(f'unregister_rpc: {name} {fn.__name__}')
 
     def register_event_handler(self, evt_type, cb):
         if evt_type not in self.event_handlers:
-            self.event_handlers[evt_type] = []
+            self.event_handlers[evt_type] = {}
 
-        self.event_handlers[evt_type].append(cb)
+        handlers = self.event_handlers[evt_type]
+
+        self.evt_cb_id += 1
+        cb_id = self.evt_cb_id
+
+        assert cb_id not in handlers
+        handlers[cb_id] = cb
         self.logger.info(f'register_event_handler: {evt_type} {cb.__name__}')
+        return cb_id
+
+    def unregister_event_handler(self, cb_id):
+        evt_type = None
+        for k, v in self.event_handlers.items():
+            if cb_id in v:
+                evt_type = k
+                break
+
+        if not evt_type:
+            return
+
+        self.event_handlers[evt_type].pop(cb_id)
+        if not self.event_handlers[evt_type]:
+            self.event_handlers.pop(evt_type)
+
+        self.logger.info(f'unregister_event_handler: {evt_type} {cb_id}')
 
     def register_exc_handler(self, h):
-        self.exc_handlers.append(h)
+        self.exc_handler_id += 1
+        exc_h_id = self.exc_handler_id
+        assert h not in self.exc_handlers.values()
+        self.exc_handlers[exc_h_id] = h
         self.logger.info(f'register_exc_handler: {h.__name__}')
+        return exc_h_id
+
+    def unregister_exc_handler(self, exc_id):
+        if exc_id in self.exc_handlers:
+            self.exc_handlers.pop(exc_id)
+            self.logger.info(f'unregister_exc_handler: {exc_id}')
 
     def register_context(self, ctx, name=''):
         if not name:
@@ -118,7 +159,7 @@ class MessageQueueServer(ConsumerProducerMixin):
 
     def handle_exception(self, e):
         self.logger.exception(e)
-        for h in self.exc_handlers:
+        for h in self.exc_handlers.values():
             self.pool.spawn_n(h, e)
 
     def rpc_worker(self, message):
@@ -168,7 +209,7 @@ class MessageQueueServer(ConsumerProducerMixin):
         if evt_type not in self.event_handlers:
             return
 
-        for cb in self.event_handlers[evt_type]:
+        for cb in self.event_handlers[evt_type].values():
             self.pool.spawn_n(self.event_worker, cb, evt_type, evt_data)
 
     def apply_to_ctx(self, meth, *args, **kws):

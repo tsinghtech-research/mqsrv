@@ -47,7 +47,6 @@ class Controller:
 
             if not self.is_running:
                 sleep(self.interval)
-                self.prev_is_running = self.is_running
                 continue
 
             sleep(0.5) # do your job
