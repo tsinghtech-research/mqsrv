@@ -130,19 +130,24 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.ctxs[name] = ctx
 
     def get_consumers(self, Consumer, channel):
-        return [
-            Consumer(
-                on_message=self.on_rpc_message,
+        out = []
+        if self.rpc_queue:
+            out.append(Consumer(
+                on_message=self._on_rpc_message,
                 queues=[self.rpc_queue],
                 prefetch_count=1,
                 no_ack=True,
-            ),
-            Consumer(
-                on_message=self.on_event_message,
+            ))
+
+        if self.event_queues:
+            out.append(Consumer(
+                on_message=self._on_event_message,
                 queues=self.event_queues,
                 no_ack=True
-            ),
-        ]
+            ))
+
+        return out
+
 
     def send_reply(self, message, result=None, error=None):
         req_id = message.properties['correlation_id']
@@ -162,7 +167,7 @@ class MessageQueueServer(ConsumerProducerMixin):
         for h in self.exc_handlers.values():
             self.pool.spawn_n(h, e)
 
-    def rpc_worker(self, message):
+    def _rpc_worker(self, message):
         req_id = message.properties['correlation_id']
         _, meth, args, kws = rpc_decode_req(message.payload)
         self.logger.debug(f"reciving request [{self.rpc_queue.name}, {req_id}] {meth}")
@@ -188,10 +193,10 @@ class MessageQueueServer(ConsumerProducerMixin):
         else:
             send_reply(result=result)
 
-    def on_rpc_message(self, message):
-        self.pool.spawn_n(self.rpc_worker, message)
+    def _on_rpc_message(self, message):
+        self.pool.spawn_n(self._rpc_worker, message)
 
-    def event_worker(self, cb, evt_type, evt_data):
+    def _event_worker(self, cb, evt_type, evt_data):
         self.logger.debug(f"reciving event [{evt_type}])")
         try:
             cb(evt_type, evt_data)
@@ -204,13 +209,13 @@ class MessageQueueServer(ConsumerProducerMixin):
             self.logger.error(f"BUG for event {evt_type}")
             self.logger.exception(e)
 
-    def on_event_message(self, message):
+    def _on_event_message(self, message):
         evt_type, evt_data = message.payload
         if evt_type not in self.event_handlers:
             return
 
         for cb in self.event_handlers[evt_type].values():
-            self.pool.spawn_n(self.event_worker, cb, evt_type, evt_data)
+            self.pool.spawn_n(self._event_worker, cb, evt_type, evt_data)
 
     def apply_to_ctx(self, meth, *args, **kws):
         def worker(ctx):
@@ -245,18 +250,18 @@ def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exch
     if not isinstance(rpc_exchange, Exchange):
         rpc_exchange = get_rpc_exchange(rpc_exchange)
 
-    if not isinstance(event_exchange, Exchange):
-        event_exchange = get_event_exchange()
 
-    if rpc_queue is None:
-        q_name, routing_key = to_pair(rpc_routing_key)
-        rpc_queue = Queue(q_name, routing_key=routing_key, exchange=rpc_exchange)
+    if rpc_queue or rpc_routing_key:
+        if rpc_queue is None:
+            q_name, routing_key = to_pair(rpc_routing_key)
+            rpc_queue = Queue(q_name, routing_key=routing_key, exchange=rpc_exchange)
 
-    if not event_queues:
-        event_queues = []
-        for i in event_routing_keys:
-            q_name, routing_key = to_pair(i)
-            event_queues.append(Queue(q_name, routing_key=routing_key, exchange=event_exchange))
+    if event_queues or event_routing_keys:
+        if not event_queues:
+            event_queues = []
+            for i in event_routing_keys:
+                q_name, routing_key = to_pair(i)
+                event_queues.append(Queue(q_name, routing_key=routing_key, exchange=event_exchange))
 
     return MessageQueueServer(conn, rpc_queue, event_queues, **kws)
 
