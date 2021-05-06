@@ -56,8 +56,10 @@ class MessageQueueClient:
 
         if rpc_exchange is None:
             rpc_exchange = get_rpc_exchange()
-
         self.rpc_exchange = rpc_exchange
+
+        if event_exchange is None:
+            event_exchange = get_event_exchange()
         self.event_exchange = event_exchange
 
         self.interval = interval

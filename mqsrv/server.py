@@ -250,11 +250,13 @@ def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exch
     if not isinstance(rpc_exchange, Exchange):
         rpc_exchange = get_rpc_exchange(rpc_exchange)
 
-
     if rpc_queue or rpc_routing_key:
         if rpc_queue is None:
             q_name, routing_key = to_pair(rpc_routing_key)
             rpc_queue = Queue(q_name, routing_key=routing_key, exchange=rpc_exchange)
+
+    if not isinstance(event_exchange, Exchange):
+        event_exchange = get_event_exchange(event_exchange)
 
     if event_queues or event_routing_keys:
         if not event_queues:
