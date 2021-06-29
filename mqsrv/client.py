@@ -1,6 +1,6 @@
 import socket
-import eventlet
 from kombu import Connection, Producer, Consumer, Queue, uuid, Exchange
+from .green import *
 from .rpc_utils import rpc_encode_req, rpc_decode_rep
 from .base import get_rpc_exchange, get_event_exchange, get_connection, declare_entity
 from .logger import get_logger
@@ -67,7 +67,7 @@ class MessageQueueClient:
 
         self.req_events = {}
 
-        self.runner = eventlet.spawn(self.run)
+        self.runner = green_spawn(self.run)
 
     def on_response(self, message):
         req_id = message.properties['correlation_id']
@@ -75,7 +75,7 @@ class MessageQueueClient:
 
         if req_id in self.req_events:
             error, result = rpc_decode_rep(message.payload)
-            self.req_events[req_id].send((req_id, error, result))
+            self.req_events[req_id].set((req_id, error, result))
 
     def run(self):
         with Consumer(self.conn,
@@ -92,7 +92,7 @@ class MessageQueueClient:
         req_id = 'corr-'+uuid()
         self.logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
 
-        self.req_events[req_id] = eventlet.Event()
+        self.req_events[req_id] = GreenEvent()
 
         with Producer(self.conn) as producer:
             producer.publish(
@@ -106,7 +106,7 @@ class MessageQueueClient:
 
     def call(self, *args, timeout=None, **kws):
         evt = self.call_async(*args, **kws)
-        req_id, *ret = evt.wait(timeout)
+        req_id, *ret = evt.get(timeout)
         del self.req_events[req_id]
         return ret
 
@@ -120,7 +120,7 @@ class MessageQueueClient:
 
     def release(self):
         self.should_stop = True
-        self.runner.wait()
+        green_thread_join(self.runner)
         self.conn.release()
 
     close = release

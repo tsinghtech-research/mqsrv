@@ -1,8 +1,6 @@
 import uuid
-import eventlet
-from eventlet import event
-from eventlet.queue import LightQueue
 
+from .green import *
 from .logger import get_logger, set_logger_level
 
 class ServiceBase:
@@ -41,7 +39,7 @@ class RunnerBase(ServiceBase):
     def run(self):
         while not self.should_stop:
             if self.is_idle():
-                eventlet.sleep(self.interval)
+                green_sleep(self.interval)
                 continue
 
             self.process()
@@ -50,7 +48,7 @@ class RunnerBase(ServiceBase):
         raise NotImplementedError
 
     def setup(self):
-        self.runlet = eventlet.spawn(self.run)
+        self.runlet = green_spawn(self.run)
 
     def teardown(self):
         self.should_stop = True
@@ -59,7 +57,7 @@ class RunnerBase(ServiceBase):
 
 class TaskQueue:
     def __init__(self, qsize):
-        self.task_q = LightQueue(qsize)
+        self.task_q = GreenQueue(qsize)
         self.req_events = {}
 
         for meth in ['empty', 'get']:
@@ -69,11 +67,11 @@ class TaskQueue:
         assert d
         self.task_q.put((req_id, d))
         if req_id:
-            self.req_events[req_id] = event.Event()
+            self.req_events[req_id] = GreenEvent()
 
-    def wait(self, req_id):
+    def wait(self, req_id, timeout=None):
         assert req_id in self.req_events
-        ret_val = self.req_events[req_id].wait()
+        ret_val = self.req_events[req_id].get(timeout)
         self.req_events.pop(req_id)
         return ret_val
 
@@ -84,4 +82,4 @@ class TaskQueue:
 
     def send(self, req_id, data={}):
         if req_id:
-            self.req_events[req_id].send(data)
+            self.req_events[req_id].set(data)

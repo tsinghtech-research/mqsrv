@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-import eventlet
-eventlet.monkey_patch()
-
-import six
-import traceback
 import sys
-import os
 import os.path as osp
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
+from mqsrv.monkey import monkey_patch; monkey_patch()
+
+import traceback
+import sys
+
+from mqsrv.green import green_sleep
 from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
 
@@ -27,7 +27,7 @@ def main(broker_url):
     t = 3
     print ('-'*10)
     print (f"slepping {t}s")
-    eventlet.sleep(t)
+    green_sleep(t)
     print (f'wake up')
 
     for i in range(10):

@@ -6,8 +6,7 @@ import signal
 from functools import partial
 import inspect
 
-import eventlet
-from eventlet import StopServe
+from .green import *
 from kombu import Connection, Queue, Exchange
 from kombu.mixins import ConsumerProducerMixin
 
@@ -48,8 +47,8 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.rpc_queue = rpc_queue
         self.event_queues = event_queues
 
-        self.pool = eventlet.GreenPool(pool_size)
-        self.ctx_pool = eventlet.GreenPool(pool_size)
+        self.pool = GreenPool(pool_size)
+        self.ctx_pool = GreenPool(pool_size)
 
         if not logger:
             self.logger = get_logger('mqserver')
@@ -165,7 +164,7 @@ class MessageQueueServer(ConsumerProducerMixin):
     def handle_exception(self, e):
         self.logger.exception(e)
         for h in self.exc_handlers.values():
-            self.pool.spawn_n(h, e)
+            self.pool.spawn(h, e)
 
     def _rpc_worker(self, message):
         req_id = message.properties['correlation_id']
@@ -194,7 +193,7 @@ class MessageQueueServer(ConsumerProducerMixin):
             send_reply(result=result)
 
     def _on_rpc_message(self, message):
-        self.pool.spawn_n(self._rpc_worker, message)
+        self.pool.spawn(self._rpc_worker, message)
 
     def _event_worker(self, cb, evt_type, evt_data):
         self.logger.debug(f"reciving event [{evt_type}])")
@@ -215,7 +214,7 @@ class MessageQueueServer(ConsumerProducerMixin):
             return
 
         for cb in self.event_handlers[evt_type].values():
-            self.pool.spawn_n(self._event_worker, cb, evt_type, evt_data)
+            self.pool.spawn(self._event_worker, cb, evt_type, evt_data)
 
     def apply_to_ctx(self, meth, *args, **kws):
         def worker(ctx):
@@ -223,7 +222,9 @@ class MessageQueueServer(ConsumerProducerMixin):
 
         ctxs = [i for i in self.ctxs.values() if hasattr(i, meth)]
         self.ctx_pool.imap(worker, ctxs)
-        self.ctx_pool.waitall()
+        green_pool_join(self.ctx_pool)
+
+        green_pool_join(self.pool)
 
     def setup(self):
         self.logger.info("server setting up...")
@@ -234,7 +235,6 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.logger.info("server tearing down...")
         self.apply_to_ctx('teardown')
         self.logger.info("server teared down.")
-        raise StopServe
 
 def to_pair(v):
     if isinstance(v, str):
@@ -272,20 +272,20 @@ def run_server(server, block=True):
     logger.info(f'starting at {server.connection.as_uri()}')
 
     def shutdown(sig_no, frame):
-        eventlet.spawn_n(server.teardown)
+        green_spawn(server.teardown)
 
     signal.signal(signal.SIGTERM, shutdown)
 
     server.setup()
 
-    runlet = eventlet.spawn(server.run)
+    runlet = green_spawn(server.run)
 
     if not block:
         return
 
     while True:
         try:
-            runlet.wait()
+            green_thread_join(runlet)
         except OSError as exc:
             if exc.errno == errno.EINTR:
                 # this is the OSError(4) caused by the signalhandler.
@@ -294,12 +294,7 @@ def run_server(server, block=True):
             raise
 
         except KeyboardInterrupt:
-            try:
-                server.teardown()
-            except StopServe:
-                break
-
-        except StopServe:
+            server.teardown()
             break
 
     logger.info("server stopped")

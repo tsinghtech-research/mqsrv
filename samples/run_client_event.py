@@ -1,16 +1,13 @@
 #!/usr/bin/env python
-import eventlet
-eventlet.monkey_patch()
-
-import six
-import traceback
 import sys
-import os
 import os.path as osp
-import time
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
+from mqsrv.monkey import monkey_patch; monkey_patch()
+
+import time
+from mqsrv.green import green_sleep
 from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
 

@@ -1,13 +1,10 @@
 #!/usr/bin/env python
-import eventlet
-eventlet.monkey_patch()
-
 import sys
-import traceback
-import os
 import os.path as osp
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
+
+from mqsrv.monkey import monkey_patch; monkey_patch()
 
 from kombu import Connection, Exchange
 from mqsrv.logger import set_logger_level
@@ -31,7 +28,7 @@ class EventServer:
     def handle_event(self, evt_type, evt_data):
         print (f"server {self.name} handle event", evt_type, evt_data)
 
-def main(name):
+def main(name="event_server"):
     srv = EventServer(name)
 
     server = make_server(
