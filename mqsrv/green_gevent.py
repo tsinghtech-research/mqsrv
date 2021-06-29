@@ -1,4 +1,5 @@
 import gevent
+from gevent import event
 from gevent import pool
 from gevent import queue
 
@@ -18,10 +19,14 @@ def green_pool_join(pool, timeout=None):
 
 class GreenEvent:
     def __init__(self):
-        self.ret = gevent.AsyncResult()
+        self.ret = event.AsyncResult()
 
     def set(self, data):
         self.ret.set(data)
 
     def get(self, timeout=None):
-        return self.ret.get(timeout)
+        if timeout is None:
+            block = True
+        else:
+            block = False
+        return self.ret.get(block=block, timeout=timeout)
