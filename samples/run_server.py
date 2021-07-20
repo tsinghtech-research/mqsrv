@@ -40,10 +40,13 @@ class FibClass:
 if __name__ == '__main__':
     fib_obj = FibClass()
 
+    rpc_queue = 'server_rpc_queue'
+    evt_queue = 'server_event_queue'
     server = make_server(
-        rpc_routing_key='server_rpc_queue',
-        event_routing_keys=['server_event_queue'],
+        rpc_routing_key=rpc_queue,
+        event_routing_keys=[evt_queue],
     )
+
     server.register_rpc(echo)
     server.register_rpc(fib_obj.fib)
     server.register_rpc(fib_fn)
