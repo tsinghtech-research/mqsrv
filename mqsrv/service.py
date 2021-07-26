@@ -22,7 +22,7 @@ class ServiceBase:
             self.event_handler(evt_type, evt_data)
 
 class RunnerBase(ServiceBase):
-    def __init__(self, name, *args, interval=0.1, **kws):
+    def __init__(self, name, *args, interval=0.01, **kws):
         super().__init__(name, *args, **kws)
 
         self.should_stop = False
