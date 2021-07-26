@@ -4,9 +4,10 @@ import os
 import os.path as osp
 os.environ['GREEN_BACKEND'] = 'gevent'
 
-cur_d = osp.dirname(__file__)
-sys.path.insert(0, cur_d+'/../')
+cur_dir = osp.dirname(__file__)
+sys.path.insert(0, cur_dir+'/../')
 
+import toml
 import signal
 from greenthread.monkey import monkey_patch; monkey_patch()
 
@@ -52,7 +53,8 @@ class FibClass:
     def process_slow(self):
         return tpool_execute(self.worker)
 
-def run():
+def run(config):
+    print ("config", config)
     fib_obj = FibClass()
     addr = "amqp://guest:guest@0.0.0.0:5672/"
     rpc_queue = 'server_rpc_queue'
@@ -74,36 +76,50 @@ def run():
 
     run_server(server)
 
-@click.command("run_server")
+@click.group()
 @click.option('--pidfile', default='/tmp/mqsrv/run_server.pid')
+@click.pass_context
+def cli(ctx, pidfile):
+    ctx.ensure_object(dict)
+    ctx.obj['pidfile'] = pidfile
+
+@cli.command()
+@click.option('--config', default=osp.join(cur_dir, 'config.toml'))
 @click.option('--logfile', default='/tmp/mqsrv/run_server.log')
 @click.option('--fg', is_flag=True)
-@click.argument('action')
-def main(pidfile, logfile, fg, action):
+@click.pass_context
+def start(ctx, config, logfile, fg):
+    config = osp.abspath(config)
+    pidfile = ctx.obj['pidfile']
     app = "run_server"
-    if action == 'start':
+    os.makedirs(osp.dirname(pidfile), exist_ok=True)
+    kws = {}
+    if fg:
+        kws['foreground'] = True
 
-        os.makedirs(osp.dirname(pidfile), exist_ok=True)
-        kws = {}
-        if fg:
-            kws['foreground'] = True
+    if logfile and not fg:
+        fp = open(logfile, 'w')
+        keep_fds = [fp.fileno()]
+        logger.remove()
+        logger.add(fp, level='DEBUG')
+        kws['keep_fds'] = keep_fds
 
-        if logfile and not fg:
-            fp = open(logfile, 'w')
-            keep_fds = [fp.fileno()]
-            logger.remove()
-            logger.add(fp, level='DEBUG')
-            kws['keep_fds'] = keep_fds
+    def action():
+        cfg = toml.load(config)
+        run(cfg)
 
-        daemon = Daemonize(app=app, pid=pidfile, action=run, **kws)
-        logger.info(f"start {app} at {pidfile}")
-        daemon.start()
+    daemon = Daemonize(app=app, pid=pidfile, action=action, **kws)
+    logger.info(f"start {app} at {pidfile}")
+    daemon.start()
 
-    elif action == 'stop':
-        pid = int(open(pidfile).read())
-        logger.info(f"stop {app} at {pidfile} {pid}")
-        os.kill(pid, signal.SIGTERM)
+@cli.command()
+@click.pass_context
+def stop(ctx):
+    pidfile = ctx.obj['pidfile']
+    pid = int(open(pidfile).read())
+    logger.info(f"stop {app} at {pidfile} {pid}")
+    os.kill(pid, signal.SIGTERM)
 
 
 if __name__ == "__main__":
-    main()
+    cli()
