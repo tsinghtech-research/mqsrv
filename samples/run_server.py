@@ -88,7 +88,7 @@ def main(pidfile, logfile, fg, action):
         if fg:
             kws['foreground'] = True
 
-        if logfile:
+        if logfile and not fg:
             fp = open(logfile, 'w')
             keep_fds = [fp.fileno()]
             logger.remove()
