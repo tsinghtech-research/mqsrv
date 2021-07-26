@@ -6,8 +6,7 @@ authors = ["daleydeng <daleydeng@qingtong123.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-eventlet = "^0.31"
-gevent = "^21"
+greenthread = "^0.1"
 kombu = "^5.1"
 easydict = "^1.9"
 yaml = "^5.4"

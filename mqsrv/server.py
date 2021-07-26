@@ -7,11 +7,10 @@ from functools import partial
 import inspect
 import socket
 
-from .green import *
-
 from loguru import logger
 from kombu import Connection, Queue, Exchange
 from kombu.mixins import ConsumerProducerMixin
+from greenthread.green import *
 
 from .rpc_utils import pack_funcs, rpc_decode_req, rpc_encode_rep
 from .base import get_connection, get_rpc_exchange, get_event_exchange

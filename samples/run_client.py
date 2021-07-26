@@ -4,13 +4,13 @@ import os.path as osp
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
-from mqsrv.monkey import monkey_patch; monkey_patch()
+from greenthread.monkey import monkey_patch; monkey_patch()
 
+from greenthread.green import *
 from loguru import logger
 import traceback
 import sys
 
-from mqsrv.green import green_sleep
 from mqsrv.client import make_client
 
 def main(broker_url):
@@ -48,6 +48,11 @@ def main(broker_url):
         # raise exc[1]
 
     pubber('new', {'hello': 1})
+
+
+    print ("processing slow")
+    _, ret = caller.fibclass_process_slow()
+    print ("processing slow", ret)
 
     client.release()
 

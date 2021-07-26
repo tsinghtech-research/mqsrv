@@ -1,9 +1,8 @@
-from .green import *
-
+from loguru import logger
 import socket
 from kombu import Connection, Producer, Consumer, Queue, uuid, Exchange
 
-from loguru import logger
+from greenthread.green import *
 from .rpc_utils import rpc_encode_req, rpc_decode_rep
 from .base import get_rpc_exchange, get_event_exchange, get_connection, declare_entity
 

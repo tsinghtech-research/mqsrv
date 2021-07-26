@@ -4,9 +4,11 @@ import os.path as osp
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
-from mqsrv.monkey import monkey_patch; monkey_patch()
+from greenthread.monkey import monkey_patch; monkey_patch()
 
+from greenthread.green import *
 from loguru import logger
+import time
 from kombu import Connection, Exchange
 from mqsrv.base import get_rpc_exchange
 from mqsrv.server import MessageQueueServer, run_server, make_server
@@ -37,6 +39,13 @@ class FibClass:
     def fib(self, n):
         return fib_fn(n)
 
+    def worker(self):
+        time.sleep(1)
+        return True
+
+    def process_slow(self):
+        return tpool_execute(self.worker)
+
 if __name__ == '__main__':
     logger.remove()
     logger.add(sys.stdout, level='DEBUG')
@@ -52,9 +61,13 @@ if __name__ == '__main__':
     )
 
     server.register_rpc(echo)
-    server.register_rpc(fib_obj.fib)
     server.register_rpc(fib_fn)
-    server.register_event_handler('new', handle_event)
+
     server.register_context(fib_obj)
+    server.register_rpc(fib_obj.fib)
+    server.register_rpc(fib_obj.process_slow)
+
+    server.register_event_handler('new', handle_event)
+
 
     run_server(server)
