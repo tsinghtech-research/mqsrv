@@ -1,15 +1,10 @@
+from .green import *
+
 import uuid
 
-from .green import *
-from .logger import get_logger, set_logger_level
-
 class ServiceBase:
-    def __init__(self, name, event_handler=None, events={}, rpc_prefix='', logger=None, logger_kws={}, debug=False, validate=False):
+    def __init__(self, name, event_handler=None, events={}, rpc_prefix='', debug=False, validate=False):
         self.name = name
-
-        if not logger:
-            logger = get_logger(self.name, **logger_kws)
-        self.logger = logger
 
         self.event_handler = event_handler
         self.events = events
@@ -18,8 +13,6 @@ class ServiceBase:
         self.validate = validate
 
         self.rpc_prefix = rpc_prefix
-
-    set_logger_level = set_logger_level
 
     def publish(self, evt_type, evt_data={}):
         if self.debug:

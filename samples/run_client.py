@@ -6,16 +6,15 @@ sys.path.insert(0, cur_d+'/../')
 
 from mqsrv.monkey import monkey_patch; monkey_patch()
 
+from loguru import logger
 import traceback
 import sys
 
 from mqsrv.green import green_sleep
-from mqsrv.logger import set_logger_level
 from mqsrv.client import make_client
 
 def main(broker_url):
     client = make_client()
-    set_logger_level(client, 'debug')
 
     caller = client.get_caller('server_rpc_queue')
     pubber = client.get_pubber('server_event_queue')

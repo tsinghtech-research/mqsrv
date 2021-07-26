@@ -1,9 +1,11 @@
+from .green import *
+
 import socket
 from kombu import Connection, Producer, Consumer, Queue, uuid, Exchange
-from .green import *
+
+from loguru import logger
 from .rpc_utils import rpc_encode_req, rpc_decode_rep
 from .base import get_rpc_exchange, get_event_exchange, get_connection, declare_entity
-from .logger import get_logger
 
 class Publisher:
     def __init__(self, client, routing_key):
@@ -43,11 +45,7 @@ class MessageQueueClient:
             rpc_exchange,
             callback_queue,
             event_exchange,
-            logger=None,
             interval=1):
-
-        if not logger:
-            self.logger = get_logger('mqclient')
 
         self.conn = connection
         declare_entity(callback_queue, self.conn)
@@ -71,7 +69,7 @@ class MessageQueueClient:
 
     def on_response(self, message):
         req_id = message.properties['correlation_id']
-        self.logger.debug(f"receiving response [{self.callback_queue.name}, {req_id}]")
+        logger.debug(f"receiving response [{self.callback_queue.name}, {req_id}]")
 
         if req_id in self.req_events:
             error, result = rpc_decode_rep(message.payload)
@@ -90,7 +88,7 @@ class MessageQueueClient:
 
     def call_async(self, routing_key, meth, *args, **kws):
         req_id = 'corr-'+uuid()
-        self.logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
+        logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
 
         self.req_events[req_id] = GreenEvent()
 

@@ -5,14 +5,16 @@ import os
 import signal
 from functools import partial
 import inspect
+import socket
 
 from .green import *
+
+from loguru import logger
 from kombu import Connection, Queue, Exchange
 from kombu.mixins import ConsumerProducerMixin
 
 from .rpc_utils import pack_funcs, rpc_decode_req, rpc_encode_rep
 from .base import get_connection, get_rpc_exchange, get_event_exchange
-from .logger import get_logger, set_logger_level
 from .exc import BaseException, MethodNotFound
 
 def format_function_name(fn):
@@ -40,7 +42,6 @@ class MessageQueueServer(ConsumerProducerMixin):
                  connection,
                  rpc_queue,
                  event_queues,
-                 logger=None,
                  pool_size=10000):
 
         self.connection = connection
@@ -50,9 +51,6 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.pool = GreenPool(pool_size)
         self.ctx_pool = GreenPool(pool_size)
 
-        if not logger:
-            self.logger = get_logger('mqserver')
-
         self.rpcs = {}
         self.event_handlers = {}
         self.exc_handlers = {}
@@ -60,21 +58,19 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.evt_cb_id = 0
         self.exc_handler_id = 0
 
-    set_logger_level = set_logger_level
-
     def register_rpc(self, fn, name=''):
         if not name:
             name = format_function_name(fn)
 
         assert name not in self.rpcs
         self.rpcs[name] = fn
-        self.logger.info(f'register_rpc: {name} {fn.__name__}')
+        logger.info(f'register_rpc: {name} {fn.__name__}')
         return name
 
     def unregister_rpc(self, name):
         if name in self.rpcs:
             self.rpcs.pop(name)
-            self.logger.info(f'unregister_rpc: {name} {fn.__name__}')
+            logger.info(f'unregister_rpc: {name} {fn.__name__}')
 
     def register_event_handler(self, evt_type, cb):
         if evt_type not in self.event_handlers:
@@ -87,7 +83,7 @@ class MessageQueueServer(ConsumerProducerMixin):
 
         assert cb_id not in handlers
         handlers[cb_id] = cb
-        self.logger.info(f'register_event_handler: {evt_type} {cb.__name__}')
+        logger.info(f'register_event_handler: {evt_type} {cb.__name__}')
         return cb_id
 
     def unregister_event_handler(self, cb_id):
@@ -104,20 +100,20 @@ class MessageQueueServer(ConsumerProducerMixin):
         if not self.event_handlers[evt_type]:
             self.event_handlers.pop(evt_type)
 
-        self.logger.info(f'unregister_event_handler: {evt_type} {cb_id}')
+        logger.info(f'unregister_event_handler: {evt_type} {cb_id}')
 
     def register_exc_handler(self, h):
         self.exc_handler_id += 1
         exc_h_id = self.exc_handler_id
         assert h not in self.exc_handlers.values()
         self.exc_handlers[exc_h_id] = h
-        self.logger.info(f'register_exc_handler: {h.__name__}')
+        logger.info(f'register_exc_handler: {h.__name__}')
         return exc_h_id
 
     def unregister_exc_handler(self, exc_id):
         if exc_id in self.exc_handlers:
             self.exc_handlers.pop(exc_id)
-            self.logger.info(f'unregister_exc_handler: {exc_id}')
+            logger.info(f'unregister_exc_handler: {exc_id}')
 
     def register_context(self, ctx, name=''):
         if not name:
@@ -151,7 +147,7 @@ class MessageQueueServer(ConsumerProducerMixin):
     def send_reply(self, message, result=None, error=None):
         req_id = message.properties['correlation_id']
         routing_key = message.properties['reply_to']
-        self.logger.debug(f"sending reply [{routing_key}, {req_id}])")
+        logger.debug(f"sending reply [{routing_key}, {req_id}])")
 
         self.producer.publish(
             rpc_encode_rep(req_id, result=result, error=error),
@@ -162,14 +158,14 @@ class MessageQueueServer(ConsumerProducerMixin):
         )
 
     def handle_exception(self, e):
-        self.logger.exception(e)
+        logger.exception(e)
         for h in self.exc_handlers.values():
             self.pool.spawn(h, e)
 
     def _rpc_worker(self, message):
         req_id = message.properties['correlation_id']
         _, meth, args, kws = rpc_decode_req(message.payload)
-        self.logger.debug(f"reciving request [{self.rpc_queue.name}, {req_id}] {meth}")
+        logger.debug(f"reciving request [{self.rpc_queue.name}, {req_id}] {meth}")
         send_reply = partial(self.send_reply, message)
 
         try:
@@ -179,14 +175,14 @@ class MessageQueueServer(ConsumerProducerMixin):
             result = self.rpcs[meth](*args, **kws)
 
         except BaseException as e:
-            self.logger.error(f"BaseException for request id {req_id}")
+            logger.error(f"BaseException for request id {req_id}")
             send_reply(error=sys.exc_info())
             self.handle_exception(e)
 
         except Exception as e:
             # we need to handle generic Exception BUG here
-            self.logger.error(f"BUG for request id {req_id}")
-            self.logger.exception(e)
+            logger.error(f"BUG for request id {req_id}")
+            logger.exception(e)
             raise
 
         else:
@@ -196,17 +192,17 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.pool.spawn(self._rpc_worker, message)
 
     def _event_worker(self, cb, evt_type, evt_data):
-        self.logger.debug(f"reciving event [{evt_type}])")
+        logger.debug(f"reciving event [{evt_type}])")
         try:
             cb(evt_type, evt_data)
 
         except BaseException as e:
-            self.logger(f"BaseException for event {evt_type}")
+            logger(f"BaseException for event {evt_type}")
             self.handle_exception(e)
 
         except Exception as e:
-            self.logger.error(f"BUG for event {evt_type}")
-            self.logger.exception(e)
+            logger.error(f"BUG for event {evt_type}")
+            logger.exception(e)
 
     def _on_event_message(self, message):
         evt_type, evt_data = message.payload
@@ -227,14 +223,14 @@ class MessageQueueServer(ConsumerProducerMixin):
         green_pool_join(self.pool)
 
     def setup(self):
-        self.logger.info("server setting up...")
+        logger.info("server setting up...")
         self.apply_to_ctx('setup')
-        self.logger.info("server setuped.")
+        logger.info("server setuped.")
 
     def teardown(self):
-        self.logger.info("server tearing down...")
+        logger.info("server tearing down...")
         self.apply_to_ctx('teardown')
-        self.logger.info("server teared down.")
+        logger.info("server teared down.")
 
 def to_pair(v):
     if isinstance(v, str):
@@ -267,9 +263,25 @@ def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exch
 
     return MessageQueueServer(conn, rpc_queue, event_queues, **kws)
 
-def run_server(server, block=True):
-    logger = server.logger
-    logger.info(f'starting at {server.connection.as_uri()}')
+def wait_for_connection(addr, max_tries):
+
+    for i in range(max_tries):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(addr)
+            sock.close()
+        except ConnectionRefusedError as e:
+            logger.info(f"connection refused, retry {i}")
+            green_sleep(2**i)
+            continue
+        else:
+            break
+
+def run_server(server, block=True, max_tries=10):
+    conn = server.connection
+    logger.info(f'starting at {conn.as_uri()}')
+
+    wait_for_connection((conn.hostname, conn.port), max_tries)
 
     def shutdown(sig_no, frame):
         green_spawn(server.teardown)

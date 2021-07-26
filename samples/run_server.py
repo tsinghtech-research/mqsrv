@@ -6,8 +6,8 @@ sys.path.insert(0, cur_d+'/../')
 
 from mqsrv.monkey import monkey_patch; monkey_patch()
 
+from loguru import logger
 from kombu import Connection, Exchange
-from mqsrv.logger import set_logger_level
 from mqsrv.base import get_rpc_exchange
 from mqsrv.server import MessageQueueServer, run_server, make_server
 
@@ -38,11 +38,15 @@ class FibClass:
         return fib_fn(n)
 
 if __name__ == '__main__':
-    fib_obj = FibClass()
+    logger.remove()
+    logger.add(sys.stdout, level='DEBUG')
 
+    fib_obj = FibClass()
+    addr = "amqp://guest:guest@0.0.0.0:5672/"
     rpc_queue = 'server_rpc_queue'
     evt_queue = 'server_event_queue'
     server = make_server(
+        conn = addr,
         rpc_routing_key=rpc_queue,
         event_routing_keys=[evt_queue],
     )
@@ -53,5 +57,4 @@ if __name__ == '__main__':
     server.register_event_handler('new', handle_event)
     server.register_context(fib_obj)
 
-    set_logger_level(server, 'debug')
     run_server(server)
