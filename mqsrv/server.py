@@ -282,10 +282,15 @@ def run_server(server, block=True, max_tries=10):
 
     wait_for_connection((conn.hostname, conn.port), max_tries)
 
-    def shutdown(sig_no, frame):
-        green_spawn(server.teardown)
+    def shutdown():
+        server.teardown()
+        logger.info("server stopped")
+        exit()
 
-    signal.signal(signal.SIGTERM, shutdown)
+    def sig_shutdown(sig_no, frame):
+        shutdown()
+
+    signal.signal(signal.SIGTERM, sig_shutdown)
 
     server.setup()
 
@@ -305,7 +310,4 @@ def run_server(server, block=True, max_tries=10):
             raise
 
         except KeyboardInterrupt:
-            server.teardown()
-            break
-
-    logger.info("server stopped")
+            shutdown()

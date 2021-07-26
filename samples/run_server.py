@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 import sys
+import os
 import os.path as osp
+os.environ['GREEN_BACKEND'] = 'gevent'
+
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
+import signal
 from greenthread.monkey import monkey_patch; monkey_patch()
 
 from greenthread.green import *
@@ -12,6 +16,8 @@ import time
 from kombu import Connection, Exchange
 from mqsrv.base import get_rpc_exchange
 from mqsrv.server import MessageQueueServer, run_server, make_server
+from daemonize import Daemonize
+import click
 
 def echo(a):
     return a
@@ -46,10 +52,7 @@ class FibClass:
     def process_slow(self):
         return tpool_execute(self.worker)
 
-if __name__ == '__main__':
-    logger.remove()
-    logger.add(sys.stdout, level='DEBUG')
-
+def run():
     fib_obj = FibClass()
     addr = "amqp://guest:guest@0.0.0.0:5672/"
     rpc_queue = 'server_rpc_queue'
@@ -69,5 +72,38 @@ if __name__ == '__main__':
 
     server.register_event_handler('new', handle_event)
 
-
     run_server(server)
+
+@click.command("run_server")
+@click.option('--pidfile', default='/tmp/mqsrv/run_server.pid')
+@click.option('--logfile', default='/tmp/mqsrv/run_server.log')
+@click.option('--fg', is_flag=True)
+@click.argument('action')
+def main(pidfile, logfile, fg, action):
+    app = "run_server"
+    if action == 'start':
+
+        os.makedirs(osp.dirname(pidfile), exist_ok=True)
+        kws = {}
+        if fg:
+            kws['foreground'] = True
+
+        if logfile:
+            fp = open(logfile, 'w')
+            keep_fds = [fp.fileno()]
+            logger.remove()
+            logger.add(fp, level='DEBUG')
+            kws['keep_fds'] = keep_fds
+
+        daemon = Daemonize(app=app, pid=pidfile, action=run, **kws)
+        logger.info(f"start {app} at {pidfile}")
+        daemon.start()
+
+    elif action == 'stop':
+        pid = int(open(pidfile).read())
+        logger.info(f"stop {app} at {pidfile} {pid}")
+        os.kill(pid, signal.SIGTERM)
+
+
+if __name__ == "__main__":
+    main()
