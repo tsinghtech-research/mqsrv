@@ -3,6 +3,7 @@ import sys
 import traceback
 import os
 import signal
+import atexit
 from functools import partial
 import inspect
 import socket
@@ -56,6 +57,8 @@ class MessageQueueServer(ConsumerProducerMixin):
         self.ctxs = {}
         self.evt_cb_id = 0
         self.exc_handler_id = 0
+
+        self.is_setuped = False
 
     def register_rpc(self, fn, name=''):
         if not name:
@@ -222,13 +225,21 @@ class MessageQueueServer(ConsumerProducerMixin):
         green_pool_join(self.pool)
 
     def setup(self):
+        if self.is_setuped:
+            return
+
         logger.info("server setting up...")
         self.apply_to_ctx('setup')
+        self.is_setuped = True
         logger.info("server setuped.")
 
     def teardown(self):
+        if not self.is_setuped:
+            return
+
         logger.info("server tearing down...")
         self.apply_to_ctx('teardown')
+        self.is_setuped = False
         logger.info("server teared down.")
 
 def to_pair(v):
@@ -263,11 +274,14 @@ def make_server(conn=None, rpc_routing_key=None, event_routing_keys=[], rpc_exch
     return MessageQueueServer(conn, rpc_queue, event_queues, **kws)
 
 def wait_for_connection(addr, max_tries):
+    host, port = addr
+    if not port:
+        port = 5672
 
     for i in range(max_tries):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(addr)
+            sock.connect((host, port))
             sock.close()
         except ConnectionRefusedError as e:
             logger.info(f"connection refused, retry {i}")
@@ -284,14 +298,9 @@ def run_server(server, block=True, max_tries=10):
 
     def shutdown():
         server.teardown()
-        logger.info("server stopped")
-        exit()
+        logger.info("server teardown")
 
-    def sig_shutdown(sig_no, frame):
-        shutdown()
-
-    signal.signal(signal.SIGTERM, sig_shutdown)
-
+    atexit.register(shutdown)
     server.setup()
 
     runlet = green_spawn(server.run)
@@ -310,4 +319,4 @@ def run_server(server, block=True, max_tries=10):
             raise
 
         except KeyboardInterrupt:
-            shutdown()
+            break

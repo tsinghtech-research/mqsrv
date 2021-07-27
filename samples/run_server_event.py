@@ -4,10 +4,9 @@ import os.path as osp
 cur_d = osp.dirname(__file__)
 sys.path.insert(0, cur_d+'/../')
 
-from mqsrv.monkey import monkey_patch; monkey_patch()
+from greenthread.monkey import monkey_patch; monkey_patch()
 
 from kombu import Connection, Exchange
-from mqsrv.logger import set_logger_level
 from mqsrv.base import get_rpc_exchange
 from mqsrv.server import MessageQueueServer, run_server, make_server
 
@@ -39,7 +38,6 @@ def main(name="event_server"):
     server.register_event_handler('new', srv.handle_event)
     server.register_context(srv)
 
-    set_logger_level(server, 'debug')
     run_server(server)
 
 if __name__ == "__main__":
