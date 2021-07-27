@@ -1,4 +1,4 @@
-from .green import *
+from greenthread.green import *
 
 import uuid
 
