@@ -18,6 +18,9 @@ from .base import get_connection, get_rpc_exchange, get_event_exchange
 from .exc import BaseException, MethodNotFound
 
 def format_function_name(fn):
+    if hasattr(fn, '__rpc_name__'):
+        return fn.__rpc_name__
+
     fn_name = fn.__name__
     if inspect.isfunction(fn):
         return fn_name
