@@ -1,4 +1,5 @@
 from loguru import logger
+import time
 import socket
 from kombu import Connection, Producer, Consumer, Queue, uuid, Exchange
 
@@ -86,6 +87,9 @@ class MessageQueueClient:
                     continue
 
     def call_async(self, routing_key, meth, *args, **kws):
+        # fix the bug that RPC blocks when run in greenthread
+        time.sleep(0.001)
+        
         req_id = 'corr-'+uuid()
         logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
 
