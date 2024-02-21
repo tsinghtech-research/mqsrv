@@ -79,6 +79,7 @@ class MessageQueueClient:
         # Fix amqp.exceptions.PreconditionFailed: Basic.reject: (406) PRECONDITION_FAILED - unknown delivery tag 1
         time.sleep(0.001)
         with Consumer(self.conn,
+                      accept=['pickle', 'json'],
                       on_message=self.on_response,
                       queues=[self.callback_queue],
                       no_ack=True):

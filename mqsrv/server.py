@@ -45,11 +45,13 @@ class MessageQueueServer(ConsumerProducerMixin):
                  connection,
                  rpc_queue,
                  event_queues,
+                 serializer=None,
                  pool_size=10000):
 
         self.connection = connection
         self.rpc_queue = rpc_queue
         self.event_queues = event_queues
+        self.serializer = serializer
 
         self.pool = GreenPool(pool_size)
         self.ctx_pool = GreenPool(pool_size)
@@ -159,6 +161,7 @@ class MessageQueueServer(ConsumerProducerMixin):
             exchange='',
             routing_key=routing_key,
             correlation_id=req_id,
+            serializer=self.serializer,
             retry=True,
         )
 
