@@ -45,6 +45,7 @@ class MessageQueueClient:
             rpc_exchange,
             callback_queue,
             event_exchange,
+            serializer=None,
             interval=1):
 
         self.conn = connection
@@ -59,7 +60,8 @@ class MessageQueueClient:
         if event_exchange is None:
             event_exchange = get_event_exchange()
         self.event_exchange = event_exchange
-
+        
+        self.serializer = serializer
         self.interval = interval
         self.should_stop = False
 
@@ -105,6 +107,7 @@ class MessageQueueClient:
                 routing_key=routing_key,
                 reply_to=self.callback_queue.name,
                 correlation_id=req_id,
+                serializer=self.serializer,
             )
             return self.req_events[req_id]
 
@@ -120,6 +123,7 @@ class MessageQueueClient:
                 [evt_type, evt_data],
                 exchange=self.event_exchange,
                 routing_key=routing_key,
+                serializer=self.serializer,
             )
 
     def release(self):

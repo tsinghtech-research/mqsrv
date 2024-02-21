@@ -138,13 +138,15 @@ class MessageQueueServer(ConsumerProducerMixin):
                 on_message=self._on_rpc_message,
                 queues=[self.rpc_queue],
                 prefetch_count=1,
-                no_ack=True,
+                accept=['pickle', 'json'],
+                no_ack=True
             ))
 
         if self.event_queues:
             out.append(Consumer(
                 on_message=self._on_event_message,
                 queues=self.event_queues,
+                accept=['pickle', 'json'],
                 no_ack=True
             ))
 
