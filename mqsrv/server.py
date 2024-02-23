@@ -138,8 +138,7 @@ class MessageQueueServer(ConsumerProducerMixin):
                 on_message=self._on_rpc_message,
                 queues=[self.rpc_queue],
                 prefetch_count=1,
-                accept=['pickle', 'json'],
-                no_ack=True
+                accept=['pickle', 'json']
             ))
 
         if self.event_queues:
@@ -166,6 +165,7 @@ class MessageQueueServer(ConsumerProducerMixin):
             serializer=self.serializer,
             retry=True,
         )
+        message.ack()
 
     def handle_exception(self, e):
         logger.exception(e)
@@ -320,6 +320,7 @@ def run_server(server, block=True, max_tries=10):
         try:
             green_thread_join(runlet)
         except OSError as exc:
+            import errno
             if exc.errno == errno.EINTR:
                 # this is the OSError(4) caused by the signalhandler.
                 # ignore and go back to waiting on the runner

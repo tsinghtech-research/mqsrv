@@ -1,5 +1,4 @@
 from loguru import logger
-import time
 import socket
 from kombu import Connection, Producer, Consumer, Queue, uuid, Exchange
 
@@ -49,7 +48,6 @@ class MessageQueueClient:
             interval=1):
 
         self.conn = connection
-        declare_entity(callback_queue, self.conn)
 
         self.callback_queue = callback_queue
 
@@ -67,8 +65,6 @@ class MessageQueueClient:
 
         self.req_events = {}
 
-        self.runner = green_spawn(self.run)
-
     def on_response(self, message):
         req_id = message.properties['correlation_id']
         logger.debug(f"receiving response [{self.callback_queue.name}, {req_id}]")
@@ -77,24 +73,7 @@ class MessageQueueClient:
             error, result = rpc_decode_rep(message.payload)
             self.req_events[req_id].set((req_id, error, result))
 
-    def run(self):
-        # Fix amqp.exceptions.PreconditionFailed: Basic.reject: (406) PRECONDITION_FAILED - unknown delivery tag 1
-        time.sleep(0.001)
-        with Consumer(self.conn,
-                      accept=['pickle', 'json'],
-                      on_message=self.on_response,
-                      queues=[self.callback_queue],
-                      no_ack=True):
-            while not self.should_stop:
-                try:
-                    self.conn.drain_events(timeout=self.interval)
-                except socket.timeout:
-                    continue
-
     def call_async(self, routing_key, meth, *args, **kws):
-        # fix the bug that RPC blocks when run in greenthread
-        time.sleep(0.001)
-        
         req_id = 'corr-'+uuid()
         logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
 
@@ -105,11 +84,23 @@ class MessageQueueClient:
                 rpc_encode_req(req_id, meth, args, kws),
                 exchange=self.rpc_exchange,
                 routing_key=routing_key,
+                declare=[self.callback_queue],
                 reply_to=self.callback_queue.name,
                 correlation_id=req_id,
                 serializer=self.serializer,
             )
-            return self.req_events[req_id]
+        with Consumer(self.conn,
+                      accept=['pickle', 'json'],
+                      on_message=self.on_response,
+                      queues=[self.callback_queue],
+                      no_ack=True):
+            while not self.req_events[req_id].ready():
+                try:
+                    self.conn.drain_events()
+                except socket.timeout:
+                    continue
+                
+        return self.req_events[req_id]
 
     def call(self, *args, timeout=None, **kws):
         evt = self.call_async(*args, **kws)
