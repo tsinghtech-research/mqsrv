@@ -119,7 +119,6 @@ class MessageQueueClient:
 
     def release(self):
         self.should_stop = True
-        green_thread_join(self.runner)
         self.conn.release()
 
     close = release
