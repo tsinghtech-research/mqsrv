@@ -36,21 +36,36 @@ class Caller:
 
     def __getattr__(self, meth):
         return _Method(self.client, self.routing_key, meth)
+    
+class ConnectionPool:
+    def __init__(self, conn, maxsize=10):
+        self._resources = GreenQueue(maxsize)
+        for _ in range(maxsize):
+            self._resources.put((get_connection(conn), Queue('cbq-'+uuid(), exclusive=True, auto_delete=True)))
+            
+    def get(self):
+        return self._resources.get()
+    
+    def release(self, resource):
+        self._resources.put(resource)
+        
+    def close(self):
+        while not self._resources.empty():
+            conn, cbq = self._resources.get()
+            conn.release()
 
 class MessageQueueClient:
     def __init__(
             self,
             connection,
             rpc_exchange,
-            callback_queue,
             event_exchange,
             serializer=None,
-            interval=1):
+            conn_pool_maxsize=1):
 
-        self.conn = connection
-
-        self.callback_queue = callback_queue
-
+        self.serializer = serializer
+        conn_pool_maxsize = conn_pool_maxsize
+        
         if rpc_exchange is None:
             rpc_exchange = get_rpc_exchange()
         self.rpc_exchange = rpc_exchange
@@ -59,46 +74,49 @@ class MessageQueueClient:
             event_exchange = get_event_exchange()
         self.event_exchange = event_exchange
         
-        self.serializer = serializer
-        self.interval = interval
         self.should_stop = False
-
         self.req_events = {}
+        
+        self.conn_pool = ConnectionPool(connection, conn_pool_maxsize)
 
     def on_response(self, message):
         req_id = message.properties['correlation_id']
-        logger.debug(f"receiving response [{self.callback_queue.name}, {req_id}]")
+        callback_queue = message.delivery_info['routing_key']
+        logger.debug(f"receiving response [{callback_queue}, {req_id}]")
 
         if req_id in self.req_events:
             error, result = rpc_decode_rep(message.payload)
             self.req_events[req_id].set((req_id, error, result))
 
     def call_async(self, routing_key, meth, *args, **kws):
+        conn, callback_queue = self.conn_pool.get()
         req_id = 'corr-'+uuid()
-        logger.debug(f"sending request: [{routing_key}, {self.callback_queue.name}, {req_id}] {meth}")
+        logger.debug(f"sending request: [{routing_key}, {callback_queue.name}, {req_id}] {meth}")
 
         self.req_events[req_id] = GreenEvent()
 
-        with Producer(self.conn) as producer:
+        with Producer(conn) as producer:
             producer.publish(
                 rpc_encode_req(req_id, meth, args, kws),
                 exchange=self.rpc_exchange,
                 routing_key=routing_key,
-                declare=[self.callback_queue],
-                reply_to=self.callback_queue.name,
+                declare=[callback_queue],
+                reply_to=callback_queue.name,
                 correlation_id=req_id,
                 serializer=self.serializer,
             )
-        with Consumer(self.conn,
+        with Consumer(conn,
                       accept=['pickle', 'json'],
                       on_message=self.on_response,
-                      queues=[self.callback_queue],
+                      queues=[callback_queue],
                       no_ack=True):
-            while not self.req_events[req_id].ready():
+            while not self.req_events[req_id].ready() and not self.should_stop:
                 try:
-                    self.conn.drain_events()
+                    conn.drain_events()
                 except socket.timeout:
                     continue
+                
+        self.conn_pool.release((conn, callback_queue))
                 
         return self.req_events[req_id]
 
@@ -109,7 +127,8 @@ class MessageQueueClient:
         return ret
 
     def publish(self, routing_key, evt_type, evt_data):
-        with Producer(self.conn) as producer:
+        conn, _ = self.conn_pool.get()
+        with Producer(conn) as producer:
             producer.publish(
                 [evt_type, evt_data],
                 exchange=self.event_exchange,
@@ -119,7 +138,7 @@ class MessageQueueClient:
 
     def release(self):
         self.should_stop = True
-        self.conn.release()
+        self.conn_pool.close()
 
     close = release
     teardown = release
@@ -130,15 +149,12 @@ class MessageQueueClient:
     def get_caller(self, routing_key):
         return Caller(self, routing_key)
 
-def make_client(conn=None, rpc_exchange=None, callback_queue=None, event_exchange=None, **kws):
-    conn = get_connection(conn)
+def make_client(conn=None, rpc_exchange=None, event_exchange=None, **kws):
+    # conn = get_connection(conn)
     if not isinstance(rpc_exchange, Exchange):
         rpc_exchange = get_rpc_exchange()
-
-    if callback_queue is None:
-        callback_queue = Queue('cbq-'+uuid(), exclusive=True, auto_delete=True)
 
     if not isinstance(event_exchange, Exchange):
         event_exchange = get_event_exchange()
 
-    return MessageQueueClient(conn, rpc_exchange, callback_queue, event_exchange, **kws)
+    return MessageQueueClient(conn, rpc_exchange, event_exchange, **kws)
