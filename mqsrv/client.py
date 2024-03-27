@@ -127,7 +127,7 @@ class MessageQueueClient:
         return ret
 
     def publish(self, routing_key, evt_type, evt_data):
-        conn, _ = self.conn_pool.get()
+        conn, callback_queue = self.conn_pool.get()
         with Producer(conn) as producer:
             producer.publish(
                 [evt_type, evt_data],
@@ -135,6 +135,7 @@ class MessageQueueClient:
                 routing_key=routing_key,
                 serializer=self.serializer,
             )
+        self.conn_pool.release((conn, callback_queue))
 
     def release(self):
         self.should_stop = True
