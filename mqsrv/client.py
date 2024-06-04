@@ -105,6 +105,12 @@ class MessageQueueClient:
                 correlation_id=req_id,
                 serializer=self.serializer,
             )
+        
+        green_spawn(self._drain_events, conn, callback_queue, req_id)
+                
+        return self.req_events[req_id]
+    
+    def _drain_events(self, conn, callback_queue, req_id):
         with Consumer(conn,
                       accept=['pickle', 'json'],
                       on_message=self.on_response,
@@ -112,19 +118,21 @@ class MessageQueueClient:
                       no_ack=True):
             while not self.req_events[req_id].ready() and not self.should_stop:
                 try:
-                    conn.drain_events()
+                    conn.drain_events(timeout=0.1)
                 except socket.timeout:
                     continue
                 
-        self.conn_pool.release((conn, callback_queue))
-                
-        return self.req_events[req_id]
+            self.conn_pool.release((conn, callback_queue))
 
     def call(self, *args, timeout=None, **kws):
         evt = self.call_async(*args, **kws)
-        req_id, *ret = evt.get(timeout)
-        del self.req_events[req_id]
-        return ret
+        try:
+            req_id, *ret = evt.get(timeout)
+            del self.req_events[req_id]
+            return ret
+        except BaseException as e:
+            evt.set(None)
+            raise e
 
     def publish(self, routing_key, evt_type, evt_data):
         conn, callback_queue = self.conn_pool.get()
