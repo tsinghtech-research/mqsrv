@@ -78,6 +78,7 @@ class MessageQueueClient:
         self.req_events = {}
         
         self.conn_pool = ConnectionPool(connection, conn_pool_maxsize)
+        self.lock = Semaphore()
 
     def on_response(self, message):
         req_id = message.properties['correlation_id']
@@ -95,34 +96,36 @@ class MessageQueueClient:
 
         self.req_events[req_id] = GreenEvent()
 
-        with Producer(conn) as producer:
-            producer.publish(
-                rpc_encode_req(req_id, meth, args, kws),
-                exchange=self.rpc_exchange,
-                routing_key=routing_key,
-                declare=[callback_queue],
-                reply_to=callback_queue.name,
-                correlation_id=req_id,
-                serializer=self.serializer,
-            )
+        with self.lock:
+            with Producer(conn) as producer:
+                producer.publish(
+                    rpc_encode_req(req_id, meth, args, kws),
+                    exchange=self.rpc_exchange,
+                    routing_key=routing_key,
+                    declare=[callback_queue],
+                    reply_to=callback_queue.name,
+                    correlation_id=req_id,
+                    serializer=self.serializer,
+                )
         
         green_spawn(self._drain_events, conn, callback_queue, req_id)
                 
         return self.req_events[req_id]
     
     def _drain_events(self, conn, callback_queue, req_id):
-        with Consumer(conn,
-                      accept=['pickle', 'json'],
-                      on_message=self.on_response,
-                      queues=[callback_queue],
-                      no_ack=True):
-            while not self.req_events[req_id].ready() and not self.should_stop:
-                try:
-                    conn.drain_events(timeout=0.1)
-                except socket.timeout:
-                    continue
-                
-            self.conn_pool.release((conn, callback_queue))
+        with self.lock:
+            with Consumer(conn,
+                        accept=['pickle', 'json'],
+                        on_message=self.on_response,
+                        queues=[callback_queue],
+                        no_ack=True):
+                while not self.req_events[req_id].ready() and not self.should_stop:
+                    try:
+                        conn.drain_events(timeout=0.1)
+                    except socket.timeout:
+                        continue
+                    
+                self.conn_pool.release((conn, callback_queue))
 
     def call(self, *args, timeout=None, **kws):
         evt = self.call_async(*args, **kws)
