@@ -1,7 +1,5 @@
 # mqsrv
 
----
-
 mqsrv is a message queue-based Remote Procedure Call (RPC) and event publish/subscribe system. It provides a flexible framework for building distributed systems and microservice architectures.
 
 ## Features
