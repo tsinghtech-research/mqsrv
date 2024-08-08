@@ -18,7 +18,6 @@ structlog = "^21"
 msgpack-python = "^1.0"
 msgpack-numpy = "^0.4"
 loguru = "^0.5"
-pydaemon = "^0.1"
 
 [tool.poetry.dev-dependencies]
 
