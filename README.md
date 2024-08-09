@@ -11,6 +11,14 @@ mqsrv is a message queue-based Remote Procedure Call (RPC) and event publish/sub
 - Flexible serialization options
 - Concurrent processing based on greenthread
 
+## Prerequisites
+
+Before installing and using mqsrv, ensure you have a message queue system set up and running. mqsrv is designed to work with various message queue implementations, with RabbitMQ being a popular choice. You can download and install RabbitMQ from their official website:
+
+[RabbitMQ Official Download Page](https://www.rabbitmq.com/download.html)
+
+Follow the installation instructions specific to your operating system. Once installed, make sure the RabbitMQ server is running before proceeding with the mqsrv installation and usage.
+
 ## Installation
 
 ```bash
