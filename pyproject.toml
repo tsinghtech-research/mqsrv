@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mqsrv"
-version = "0.1.0"
+version = "0.1.3"
 description = ""
 authors = ["daleydeng <daleydeng@qingtong123.com>"]
 
@@ -8,13 +8,9 @@ authors = ["daleydeng <daleydeng@qingtong123.com>"]
 python = "^3.8"
 greenthread = "^0.1"
 kombu = "^5.1"
-easydict = "^1.9"
-yaml = "^5.4"
-jinja2 = "^3"
 toml = "^0.10"
 tblib = "^1.7"
 jsonpickle = "^2.0"
-structlog = "^21"
 msgpack-python = "^1.0"
 msgpack-numpy = "^0.4"
 loguru = "^0.5"
