@@ -149,8 +149,9 @@ class MessageQueueClient:
         self.conn_pool.release((conn, callback_queue))
 
     def release(self):
-        self.should_stop = True
-        self.conn_pool.close()
+        with self.lock:
+            self.should_stop = True
+            self.conn_pool.close()
 
     close = release
     teardown = release

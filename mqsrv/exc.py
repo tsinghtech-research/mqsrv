@@ -12,6 +12,9 @@ def pack_exc(error):
     return out
 
 def unpack_exc(error):
+    # compatibility with aiomqsrv
+    error['raw'] = error['raw'].replace('aiomqsrv', 'mqsrv')
+    
     et, ev, tb = jsonpickle.decode(error['raw'])
     tb = tblib.Traceback.from_dict(tb).as_traceback()
     return et, ev, tb
